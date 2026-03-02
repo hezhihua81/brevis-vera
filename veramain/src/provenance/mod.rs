@@ -10,6 +10,7 @@ pub struct ProvenanceInfo {
     pub claim_label: Option<String>,
     pub json_output: String,
     pub error: Option<String>,
+    pub validation_errors: Vec<String>,
 }
 
 pub fn verify_c2pa_provenance(file_path: &str) -> ProvenanceInfo {
@@ -23,10 +24,11 @@ pub fn verify_c2pa_provenance(file_path: &str) -> ProvenanceInfo {
             claim_label: None,
             json_output: String::new(),
             error: Some(format!("File not found: {}", file_path)),
+            validation_errors: vec![],
         };
     }
 
-    // Use C2PA Reader API to verify the manifest
+    // Use C2PA Reader API to verify the manifest and signature
     match Reader::from_file(path) {
         Ok(reader) => {
             // Get JSON output for debugging
@@ -35,19 +37,28 @@ pub fn verify_c2pa_provenance(file_path: &str) -> ProvenanceInfo {
             // Check if there is an active manifest
             let has_manifest = reader.active_manifest().is_some();
 
-            // Get claim label from JSON if available
-            let claim_label = if has_manifest {
-                Some("C2PA manifest present".to_string())
-            } else {
-                None
-            };
+            // Get claim label from manifest if available
+            let claim_label = reader
+                .active_manifest()
+                .map(|_m| "C2PA manifest present".to_string());
+
+            // Verify signature by checking validation status
+            let validation_errors: Vec<String> = reader
+                .validation_results()
+                .iter()
+                .map(|status| format!("{:?}", status))
+                .collect();
+
+            // Determine if verification succeeded (no validation errors)
+            let is_verified = validation_errors.is_empty() && has_manifest;
 
             ProvenanceInfo {
-                is_verified: has_manifest,
+                is_verified,
                 has_manifest,
                 claim_label,
                 json_output,
                 error: None,
+                validation_errors,
             }
         }
         Err(e) => {
@@ -58,6 +69,7 @@ pub fn verify_c2pa_provenance(file_path: &str) -> ProvenanceInfo {
                 claim_label: None,
                 json_output: String::new(),
                 error: Some(format!("C2PA error: {}", e)),
+                validation_errors: vec![],
             }
         }
     }
@@ -75,6 +87,7 @@ mod tests {
             claim_label: Some("test_claim".to_string()),
             json_output: "{}".to_string(),
             error: None,
+            validation_errors: vec![],
         };
 
         assert!(info.is_verified);
