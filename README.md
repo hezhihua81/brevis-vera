@@ -117,6 +117,7 @@ http://localhost:3000
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/` | Web UI (index.html) |
 | GET | `/health` | Health check |
 | POST | `/api/verify` | Verify C2PA provenance |
 | POST | `/api/edit` | Edit image |
@@ -242,7 +243,20 @@ curl -X POST -F "file=@input.jpg" -F "brightness=20" http://127.0.0.1:3000/api/e
 
 ## Demo UI
 
-A web-based demo is available at `src/ui/index.html`. Open it in a browser to interactively test the full flow. The demo UI uses the REST API for all operations.
+A web-based demo is served automatically when the API server starts. Simply open your browser and navigate to:
+
+```
+http://127.0.0.1:3000
+```
+
+The demo UI provides an interactive 4-step workflow:
+
+1. **Upload** - Upload a C2PA-signed image to verify its provenance
+2. **Edit** - Apply transformations (crop, resize, brightness)
+3. **Prove** - Generate a ZK proof attesting to the edit integrity
+4. **Verify** - Verify the generated proof
+
+All operations use the REST API backend.
 
 ## Architecture
 

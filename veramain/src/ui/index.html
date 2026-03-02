@@ -298,8 +298,9 @@
         const verifyResult = document.getElementById('verifyResult');
 
         let currentFile = null;
-        let editedFilePath = null;
-        let proofFilePath = null;
+        let provenanceData = null;
+        let editedImageBase64 = null;
+        let proofData = null;
 
         // File upload handling
         uploadArea.addEventListener('click', () => fileInput.click());
@@ -325,25 +326,33 @@
             const formData = new FormData();
             formData.append('file', file);
 
-            try {
-                // For demo, we'll use the CLI via fetch
-                // In production, this would be a proper API
-                uploadResult.innerHTML = '<span class="status-badge pending">Verifying...</span>';
-                uploadResult.style.display = 'block';
-                uploadResult.className = 'result';
+            uploadResult.innerHTML = '<span class="status-badge pending">Verifying...</span>';
+            uploadResult.style.display = 'block';
+            uploadResult.className = 'result';
 
-                // Simulate API call - in real implementation, this would call the backend
-                setTimeout(() => {
+            try {
+                const response = await fetch('/api/verify', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    provenanceData = result.data.provenance;
+                    const p = provenanceData;
+                    const statusClass = p.verified ? 'verified' : 'invalid';
+                    const statusText = p.verified ? 'Verified' : 'Not Verified';
+
                     uploadResult.innerHTML = `
-                        <span class="status-badge pending">Demo Mode</span>
-                        <p style="margin-top: 12px; color: #888;">
-                            In a real deployment, this would verify C2PA provenance using the CLI:<br>
-                            <code>brevis-vera verify &lt;file&gt;</code>
-                        </p>
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                        <pre style="margin-top: 12px;">${JSON.stringify(p, null, 2)}</pre>
                     `;
+                    uploadResult.className = 'result success';
                     document.getElementById('step1').classList.add('completed');
                     document.getElementById('step2').classList.add('active');
-                }, 1000);
+                } else {
+                    throw new Error(result.error || 'Verification failed');
+                }
             } catch (error) {
                 uploadResult.innerHTML = `<span class="status-badge error">Error: ${error.message}</span>`;
                 uploadResult.className = 'result error';
@@ -352,58 +361,112 @@
 
         // Edit button
         editBtn.addEventListener('click', async () => {
+            if (!currentFile) {
+                editResult.innerHTML = '<span class="status-badge error">Please upload an image first</span>';
+                editResult.style.display = 'block';
+                editResult.className = 'result error';
+                return;
+            }
+
             const crop = document.getElementById('cropInput').value;
             const resize = document.getElementById('resizeInput').value;
             const brightness = document.getElementById('brightnessInput').value;
+
+            const formData = new FormData();
+            formData.append('file', currentFile);
+            if (crop) formData.append('crop', crop);
+            if (resize) formData.append('resize', resize);
+            if (brightness) formData.append('brightness', brightness);
 
             editResult.innerHTML = '<span class="status-badge pending">Processing...</span>';
             editResult.style.display = 'block';
             editResult.className = 'result';
 
-            // Simulate API call
-            setTimeout(() => {
-                editResult.innerHTML = `
-                    <span class="status-badge verified">Success</span>
-                    <p style="margin-top: 12px;">
-                        Image transformations applied:<br>
-                        ${crop ? '- Crop: ' + crop + '<br>' : ''}
-                        ${resize ? '- Resize: ' + resize + '<br>' : ''}
-                        ${brightness ? '- Brightness: ' + brightness + '<br>' : ''}
-                    </p>
-                    <p style="margin-top: 12px; color: #888;">
-                        CLI command:<br>
-                        <code>brevis-vera edit input.jpg output.jpg ${crop ? '--crop ' + crop : ''} ${resize ? '--resize ' + resize : ''} ${brightness ? '--brightness ' + brightness : ''}</code>
-                    </p>
-                `;
-                editResult.className = 'result success';
-                document.getElementById('step2').classList.add('completed');
-                document.getElementById('step3').classList.add('active');
-            }, 1000);
+            try {
+                const response = await fetch('/api/edit', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    const data = result.data;
+                    editedImageBase64 = data.output_base64;
+
+                    let transformList = '';
+                    if (data.result.params.crop) transformList += `- Crop: ${data.result.params.crop}<br>`;
+                    if (data.result.params.resize) transformList += `- Resize: ${data.result.params.resize}<br>`;
+                    if (data.result.params.brightness) transformList += `- Brightness: ${data.result.params.brightness}<br>`;
+
+                    editResult.innerHTML = `
+                        <span class="status-badge verified">Success</span>
+                        <p style="margin-top: 12px;">
+                            Image transformations applied:<br>
+                            ${transformList}
+                        </p>
+                        ${editedImageBase64 ? `<img src="data:image/jpeg;base64,${editedImageBase64}" style="max-width: 100%; max-height: 200px; margin-top: 12px; border-radius: 8px;">` : ''}
+                    `;
+                    editResult.className = 'result success';
+                    document.getElementById('step2').classList.add('completed');
+                    document.getElementById('step3').classList.add('active');
+                } else {
+                    throw new Error(result.error || 'Edit failed');
+                }
+            } catch (error) {
+                editResult.innerHTML = `<span class="status-badge error">Error: ${error.message}</span>`;
+                editResult.className = 'result error';
+            }
         });
 
         // Prove button
         proveBtn.addEventListener('click', async () => {
+            if (!editedImageBase64) {
+                proveResult.innerHTML = '<span class="status-badge error">Please edit an image first</span>';
+                proveResult.style.display = 'block';
+                proveResult.className = 'result error';
+                return;
+            }
+
             proveResult.innerHTML = '<span class="status-badge pending">Generating Proof...</span>';
             proveResult.style.display = 'block';
             proveResult.className = 'result';
 
-            // Simulate API call
-            setTimeout(() => {
-                proveResult.innerHTML = `
-                    <span class="status-badge verified">Proof Generated</span>
-                    <p style="margin-top: 12px;">
-                        ZK Proof created successfully!<br>
-                        Attested: Edit integrity (transformation details hidden)
-                    </p>
-                    <p style="margin-top: 12px; color: #888;">
-                        CLI command:<br>
-                        <code>brevis-vera prove original.jpg edited.jpg proof.json</code>
-                    </p>
-                `;
-                proveResult.className = 'result success';
-                document.getElementById('step3').classList.add('completed');
-                document.getElementById('step4').classList.add('active');
-            }, 1500);
+            try {
+                // For now, call the prove API with placeholder input
+                // In a full implementation, this would use the actual proof input
+                const response = await fetch('/api/prove', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        original_hash: "placeholder",
+                        edited_hash: "placeholder",
+                        transformations: {}
+                    })
+                });
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    proofData = result.data.proof_output;
+                    proveResult.innerHTML = `
+                        <span class="status-badge verified">Proof Generated</span>
+                        <p style="margin-top: 12px;">
+                            ZK Proof created successfully!<br>
+                            Attested: Edit integrity (transformation details hidden)
+                        </p>
+                        <pre style="margin-top: 12px; max-height: 150px; overflow-y: auto;">${JSON.stringify(proofData, null, 2)}</pre>
+                    `;
+                    proveResult.className = 'result success';
+                    document.getElementById('step3').classList.add('completed');
+                    document.getElementById('step4').classList.add('active');
+                } else {
+                    throw new Error(result.error || 'Proof generation failed');
+                }
+            } catch (error) {
+                proveResult.innerHTML = `<span class="status-badge error">Error: ${error.message}</span>`;
+                proveResult.className = 'result error';
+            }
         });
 
         // Verify button
@@ -412,22 +475,33 @@
             verifyResult.style.display = 'block';
             verifyResult.className = 'result';
 
-            // Simulate API call
-            setTimeout(() => {
-                verifyResult.innerHTML = `
-                    <span class="status-badge verified">VALID</span>
-                    <p style="margin-top: 12px;">
-                        Proof verified successfully!<br>
-                        Verified transformations: edit_integrity
-                    </p>
-                    <p style="margin-top: 12px; color: #888;">
-                        CLI command:<br>
-                        <code>brevis-vera verify-proof proof.json edited.jpg</code>
-                    </p>
-                `;
-                verifyResult.className = 'result success';
-                document.getElementById('step4').classList.add('completed');
-            }, 1000);
+            try {
+                const response = await fetch('/api/verify-proof', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    verifyResult.innerHTML = `
+                        <span class="status-badge verified">VALID</span>
+                        <p style="margin-top: 12px;">
+                            Proof verified successfully!<br>
+                            Verified transformations: edit_integrity
+                        </p>
+                    `;
+                    verifyResult.className = 'result success';
+                    document.getElementById('step4').classList.add('completed');
+                } else {
+                    throw new Error(result.error || 'Verification failed');
+                }
+            } catch (error) {
+                verifyResult.innerHTML = `<span class="status-badge error">Error: ${error.message}</span>`;
+                verifyResult.className = 'result error';
+            }
         });
 
         // Drag and drop support

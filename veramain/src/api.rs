@@ -2,6 +2,7 @@
 use axum::{
     extract::{Multipart, State},
     http::StatusCode,
+    response::Html,
     response::Json,
     routing::{get, post},
     Router,
@@ -14,6 +15,9 @@ use tower_http::cors::{Any, CorsLayer};
 use zkapp::types::{ProofInput, ProofOutput};
 
 const ELF: &[u8] = include_bytes!("../../zkapp/elf/riscv32im-pico-zkvm-elf");
+
+// Embed the UI HTML
+const UI_HTML: &str = include_str!("ui/index.html");
 
 #[derive(Clone)]
 struct AppState {
@@ -70,6 +74,11 @@ pub struct HealthResponse {
 }
 
 // ============ API Routes ============
+
+/// Serve the main UI page
+async fn ui_index() -> Html<&'static str> {
+    Html(UI_HTML)
+}
 
 /// Health check endpoint
 async fn health() -> Json<ApiResponse<HealthResponse>> {
@@ -264,6 +273,7 @@ pub async fn run_server(host: &str, port: u16) {
 
     // Build router
     let app = Router::new()
+        .route("/", get(ui_index))
         .route("/health", get(health))
         .route("/api/verify", post(verify))
         .route("/api/edit", post(edit))

@@ -1,5 +1,14 @@
 ## ADDED Requirements
 
+### Requirement: Dynamic Web UI
+The system SHALL serve a dynamic web UI that is embedded in the server and served on startup.
+
+#### Scenario: Server starts with web UI
+- **GIVEN** the server is started with `serve` command
+- **WHEN** user navigates to the server URL (e.g., `http://127.0.0.1:3000`)
+- **THEN** the web UI HTML page SHALL be served dynamically
+- **AND** the page SHALL be fully functional without any static file setup
+
 ### Requirement: RESTful API Integration
 The frontend SHALL communicate with the backend via RESTful API endpoints.
 
@@ -66,6 +75,7 @@ The system SHALL provide a verification view where users can verify edited media
 
 | Method | Endpoint | Request | Response |
 |--------|----------|---------|----------|
+| GET | `/` | - | HTML page (index.html) |
 | GET | `/health` | - | `{success, data: {status, version}, error}` |
 | POST | `/api/verify` | `multipart: file` | `{success, data: {provenance: {...}}, error}` |
 | POST | `/api/edit` | `multipart: file, crop?, resize?, brightness?` | `{success, data: {result: {...}, output_base64}, error}` |
