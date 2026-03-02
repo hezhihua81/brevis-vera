@@ -19,5 +19,9 @@ pico-sdk = {git = "https://github.com/brevis-network/pico"}
 serde = {version = "1.0", features = ["derive"]}# Serialization       
 serde_json = "1.0" # JSON handling
 sha2 = "0.10" # SHA256 hashing for proof inputs
+tokio = { version = "1", features = ["full"] } # Async runtime
+axum = { version = "0.7", features = ["multipart"] } # HTTP web framework
+tower = "0.4" # Tower service utilities
+tower-http = { version = "0.5", features = ["cors", "fs"] } # HTTP utilities
 
 zkapp = {path = "zkapp"}

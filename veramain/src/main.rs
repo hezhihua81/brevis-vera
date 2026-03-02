@@ -1,3 +1,4 @@
+mod api;
 mod image_editing;
 mod provenance;
 
@@ -19,6 +20,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Start RESTful API server
+    Serve {
+        /// Host to bind to (default: 127.0.0.1)
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        /// Port to bind to (default: 3000)
+        #[arg(long, default_value = "3000")]
+        port: u16,
+    },
     /// Verify C2PA provenance of a media file
     Verify {
         /// Path to the media file (JPEG/PNG)
@@ -48,10 +58,14 @@ enum Commands {
 
 const ELF: &[u8] = include_bytes!("../../zkapp/elf/riscv32im-pico-zkvm-elf");
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
+        Commands::Serve { host, port } => {
+            api::run_server(host, *port).await;
+        }
         Commands::Verify { file } => {
             let result = verify_c2pa_provenance(file);
             println!("{}", serde_json::to_string_pretty(&result).unwrap());

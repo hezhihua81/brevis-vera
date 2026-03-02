@@ -24,17 +24,37 @@ Brevis Vera is a prototype system for verifying the authenticity of digitally ed
 cargo build --release
 ```
 
+### Start REST API Server
+
+```bash
+# Default: 127.0.0.1:3000
+cargo run --package veramain -- serve
+
+# Custom host and port
+cargo run --package veramain -- serve --host 0.0.0.0 --port 8080
+```
+
 ### CLI Commands
+
+#### Start API Server
+
+```bash
+# Default: 127.0.0.1:3000
+cargo run --package veramain -- serve
+
+# Custom port
+cargo run --package veramain -- serve --port 8080
+```
 
 #### Verify C2PA Provenance
 
 ```bash
-brevis-vera verify <image_file>
+cargo run --package veramain -- verify <image_file>
 ```
 
 Example:
 ```bash
-brevis-vera verify photo.jpg
+cargo run --package veramain -- verify photo.jpg
 ```
 
 Output:
@@ -51,7 +71,7 @@ Output:
 #### Edit Image
 
 ```bash
-brevis-vera edit <input> <output> [options]
+cargo run --package veramain -- edit <input> <output> [options]
 ```
 
 Options:
@@ -61,34 +81,168 @@ Options:
 
 Example:
 ```bash
-brevis-vera edit input.jpg output.jpg --crop "10,10,200,200" --brightness 20
+cargo run --package veramain -- edit input.jpg output.jpg --crop "10,10,200,200" --brightness 20
 ```
 
 #### Generate ZK Proof
 
 ```bash
-brevis-vera prove <original> <edited> <output>
+cargo run --package veramain -- prove <proof_input_file>
 ```
 
 Example:
 ```bash
-brevis-vera prove original.jpg edited.jpg proof.json
+cargo run --package veramain -- prove proof_input.json
 ```
 
 #### Verify Proof
 
 ```bash
-brevis-vera verify-proof <proof_file> <edited_image>
+cargo run --package veramain -- verify-proof
 ```
 
-Example:
+Note: Currently a placeholder implementation.
+
+## RESTful API
+
+The system provides a RESTful API for frontend integration.
+
+### Base URL
+
+```
+http://localhost:3000
+```
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check |
+| POST | `/api/verify` | Verify C2PA provenance |
+| POST | `/api/edit` | Edit image |
+| POST | `/api/prove` | Generate ZK proof |
+| POST | `/api/verify-proof` | Verify ZK proof |
+
+### API Reference
+
+#### Health Check
+
 ```bash
-brevis-vera verify-proof proof.json edited.jpg
+GET /health
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "status": "ok",
+    "version": "0.1.0"
+  },
+  "error": null
+}
+```
+
+#### Verify Provenance
+
+```bash
+POST /api/verify
+Content-Type: multipart/form-data
+
+# Body: file (image file)
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "provenance": {
+      "is_verified": true,
+      "has_manifest": true,
+      "claim_label": "C2PA manifest present",
+      "json_output": "...",
+      "error": null,
+      "validation_errors": []
+    }
+  },
+  "error": null
+}
+```
+
+#### Edit Image
+
+```bash
+POST /api/edit
+Content-Type: multipart/form-data
+
+# Body:
+#   - file: image file (required)
+#   - crop: "x,y,width,height" (optional)
+#   - resize: "width,height" (optional)
+#   - brightness: -100 to 100 (optional)
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "result": {
+      "success": true,
+      "output_path": "...",
+      "params": {
+        "crop": { "x": 0, "y": 0, "width": 800, "height": 600 },
+        "resize": null,
+        "brightness": 20
+      },
+      "error": null
+    },
+    "output_base64": "..."
+  },
+  "error": null
+}
+```
+
+#### Generate ZK Proof
+
+```bash
+POST /api/prove
+Content-Type: application/json
+
+# Body: ProofInput JSON object
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "proof_output": { ... }
+  },
+  "error": null
+}
+```
+
+### cURL Examples
+
+```bash
+# Health check
+curl http://127.0.0.1:3000/health
+
+# Verify image provenance
+curl -X POST -F "file=@image.jpg" http://127.0.0.1:3000/api/verify
+
+# Edit image with resize
+curl -X POST -F "file=@input.jpg" -F "resize=800,600" http://127.0.0.1:3000/api/edit
+
+# Edit image with brightness
+curl -X POST -F "file=@input.jpg" -F "brightness=20" http://127.0.0.1:3000/api/edit
 ```
 
 ## Demo UI
 
-A web-based demo is available at `src/ui/index.html`. Open it in a browser to interactively test the full flow.
+A web-based demo is available at `src/ui/index.html`. Open it in a browser to interactively test the full flow. The demo UI uses the REST API for all operations.
 
 ## Architecture
 
@@ -116,11 +270,13 @@ A web-based demo is available at `src/ui/index.html`. Open it in a browser to in
 - **C2PA SDK**: c2pa (v0.76)
 - **Image Processing**: image crate
 - **CLI**: clap
-- **ZK Proof**: Placeholder (Pico ZKVM integration pending)
+- **HTTP Server**: Axum
+- **Async Runtime**: Tokio
+- **ZK Proof**: Pico ZKVM
 
 ## Limitations
 
-- ZK proof generation is currently a placeholder
+- ZK proof verification is not fully implemented
 - No actual C2PA test files included (obtain from C2PA tools)
 - Video support not implemented
 - Performance not optimized
