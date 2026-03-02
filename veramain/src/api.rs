@@ -2,8 +2,7 @@
 use axum::{
     extract::{Multipart, State},
     http::StatusCode,
-    response::Html,
-    response::Json,
+    response::{Html, IntoResponse, Json, Response},
     routing::{get, post},
     Router,
 };
@@ -51,6 +50,19 @@ impl<T> ApiResponse<T> {
     }
 }
 
+// Custom error type for API responses
+struct ApiError {
+    status: StatusCode,
+    message: String,
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let body = Json(ApiResponse::<()>::error(&self.message));
+        (self.status, body).into_response()
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct VerifyResponse {
     pub provenance: ProvenanceInfo,
@@ -92,11 +104,11 @@ async fn health() -> Json<ApiResponse<HealthResponse>> {
 async fn verify(
     State(state): State<AppState>,
     mut multipart: Multipart,
-) -> Result<Json<ApiResponse<VerifyResponse>>, (StatusCode, String)> {
+) -> Result<Json<ApiResponse<VerifyResponse>>, ApiError> {
     let mut file_data: Option<(Vec<u8>, String)> = None;
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
-        (StatusCode::BAD_REQUEST, format!("Failed to parse multipart: {}", e))
+        ApiError { status: StatusCode::BAD_REQUEST, message: format!("Failed to parse multipart: {}", e) }
     })? {
         let name = field.name().unwrap_or("").to_string();
         if name == "file" {
@@ -105,7 +117,7 @@ async fn verify(
                 .unwrap_or("image.jpg")
                 .to_string();
             let bytes = field.bytes().await.map_err(|e| {
-                (StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e))
+                ApiError { status: StatusCode::BAD_REQUEST, message: format!("Failed to read file: {}", e) }
             })?;
             file_data = Some((bytes.to_vec(), filename));
             break;
@@ -113,13 +125,13 @@ async fn verify(
     }
 
     let (bytes, filename) = file_data
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "No file provided".to_string()))?;
+        .ok_or_else(|| ApiError { status: StatusCode::BAD_REQUEST, message: "No file provided".to_string() })?;
 
     // Save uploaded file temporarily
     let file_path = state.upload_dir.join(&filename);
     tokio::fs::write(&file_path, &bytes)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save file: {}", e)))?;
+        .map_err(|e| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: format!("Failed to save file: {}", e) })?;
 
     // Verify provenance
     let result = verify_c2pa_provenance(file_path.to_str().unwrap_or(""));
@@ -136,14 +148,14 @@ async fn verify(
 async fn edit(
     State(state): State<AppState>,
     mut multipart: Multipart,
-) -> Result<Json<ApiResponse<EditResponse>>, (StatusCode, String)> {
+) -> Result<Json<ApiResponse<EditResponse>>, ApiError> {
     let mut file_data: Option<(Vec<u8>, String)> = None;
     let mut crop: Option<String> = None;
     let mut resize: Option<String> = None;
     let mut brightness: Option<i32> = None;
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
-        (StatusCode::BAD_REQUEST, format!("Failed to parse multipart: {}", e))
+        ApiError { status: StatusCode::BAD_REQUEST, message: format!("Failed to parse multipart: {}", e) }
     })? {
         let name = field.name().unwrap_or("").to_string();
         match name.as_str() {
@@ -153,7 +165,7 @@ async fn edit(
                     .unwrap_or("image.jpg")
                     .to_string();
                 let bytes = field.bytes().await.map_err(|e| {
-                    (StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e))
+                    ApiError { status: StatusCode::BAD_REQUEST, message: format!("Failed to read file: {}", e) }
                 })?;
                 file_data = Some((bytes.to_vec(), filename));
             }
@@ -171,14 +183,14 @@ async fn edit(
     }
 
     let (bytes, filename) = file_data
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "No file provided".to_string()))?;
+        .ok_or_else(|| ApiError { status: StatusCode::BAD_REQUEST, message: "No file provided".to_string() })?;
 
     // Save uploaded file temporarily
     let input_filename = format!("input_{}", filename);
     let input_path = state.upload_dir.join(&input_filename);
     tokio::fs::write(&input_path, &bytes)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save file: {}", e)))?;
+        .map_err(|e| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: format!("Failed to save file: {}", e) })?;
 
     // Generate output filename
     let output_filename = format!("output_{}", filename);
@@ -199,7 +211,7 @@ async fn edit(
         )
     })
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Task error: {}", e)))?;
+    .map_err(|e| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: format!("Task error: {}", e) })?;
 
     // Read output file as base64 if successful
     let output_base64 = if result.success {
@@ -228,7 +240,7 @@ async fn edit(
 }
 
 /// Generate ZK proof for edited media
-async fn prove(Json(payload): Json<ProofInput>) -> Result<Json<ApiResponse<ProveResponse>>, (StatusCode, String)> {
+async fn prove(Json(payload): Json<ProofInput>) -> Result<Json<ApiResponse<ProveResponse>>, ApiError> {
     let proof_input = payload;
 
     let proof_output = tokio::task::spawn_blocking(move || {
@@ -245,7 +257,7 @@ async fn prove(Json(payload): Json<ProofInput>) -> Result<Json<ApiResponse<Prove
         bincode::deserialize::<ProofOutput>(&pv_stream).unwrap()
     })
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Task error: {}", e)))?;
+    .map_err(|e| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: format!("Task error: {}", e) })?;
 
     Ok(Json(ApiResponse::success(ProveResponse { proof_output })))
 }
