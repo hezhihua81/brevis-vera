@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brevis Vera - Media Authenticity Attestation</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #fff;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, #00d4ff, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .card h2 {
+            margin-bottom: 16px;
+            font-size: 1.3rem;
+            color: #00d4ff;
+        }
+        .file-upload {
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .file-upload:hover {
+            border-color: #00d4ff;
+            background: rgba(0, 212, 255, 0.05);
+        }
+        .file-upload input {
+            display: none;
+        }
+        .file-upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .control-group label {
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+        .control-group input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            color: #fff;
+            font-size: 1rem;
+        }
+        .control-group input:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+        .btn {
+            background: linear-gradient(90deg, #00d4ff, #7c3aed);
+            border: none;
+            border-radius: 8px;
+            padding: 14px 28px;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 212, 255, 0.3);
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            display: none;
+        }
+        .result.success {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+        }
+        .result.error {
+            background: rgba(255, 68, 68, 0.1);
+            border: 1px solid rgba(255, 68, 68, 0.3);
+        }
+        .result pre {
+            white-space: pre-wrap;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.85rem;
+            color: #aaa;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .status-badge.verified {
+            background: rgba(0, 255, 136, 0.2);
+            color: #00ff88;
+        }
+        .status-badge.invalid {
+            background: rgba(255, 68, 68, 0.2);
+            color: #ff4444;
+        }
+        .status-badge.pending {
+            background: rgba(255, 200, 0, 0.2);
+            color: #ffc800;
+        }
+        .steps {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            position: relative;
+        }
+        .steps::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 10%;
+            right: 10%;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+        .step-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .step.active .step-number {
+            background: linear-gradient(90deg, #00d4ff, #7c3aed);
+        }
+        .step.completed .step-number {
+            background: #00ff88;
+            color: #000;
+        }
+        .step-label {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        .image-preview {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 8px;
+            margin-top: 16px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Brevis Vera</h1>
+        <p class="subtitle">Digital Media Authenticity Attestation</p>
+
+        <div class="steps">
+            <div class="step active" id="step1">
+                <div class="step-number">1</div>
+                <span class="step-label">Upload</span>
+            </div>
+            <div class="step" id="step2">
+                <div class="step-number">2</div>
+                <span class="step-label">Edit</span>
+            </div>
+            <div class="step" id="step3">
+                <div class="step-number">3</div>
+                <span class="step-label">Prove</span>
+            </div>
+            <div class="step" id="step4">
+                <div class="step-number">4</div>
+                <span class="step-label">Verify</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>1. Upload C2PA-Signed Media</h2>
+            <div class="file-upload" id="uploadArea">
+                <input type="file" id="fileInput" accept="image/jpeg,image/png">
+                <div class="file-upload-icon">📁</div>
+                <p>Click or drag image here</p>
+                <p style="color: #666; font-size: 0.85rem; margin-top: 8px;">Supports JPEG and PNG</p>
+            </div>
+            <img id="imagePreview" class="image-preview" alt="Preview">
+            <div id="uploadResult" class="result"></div>
+        </div>
+
+        <div class="card">
+            <h2>2. Edit Image</h2>
+            <div class="controls">
+                <div class="control-group">
+                    <label>Crop (x,y,width,height)</label>
+                    <input type="text" id="cropInput" placeholder="e.g., 10,10,200,200">
+                </div>
+                <div class="control-group">
+                    <label>Resize (width,height)</label>
+                    <input type="text" id="resizeInput" placeholder="e.g., 800,600">
+                </div>
+                <div class="control-group">
+                    <label>Brightness (-100 to 100)</label>
+                    <input type="number" id="brightnessInput" placeholder="0" min="-100" max="100">
+                </div>
+            </div>
+            <div class="btn-group">
+                <button class="btn" id="editBtn">Apply Transformations</button>
+            </div>
+            <div id="editResult" class="result"></div>
+        </div>
+
+        <div class="card">
+            <h2>3. Generate ZK Proof</h2>
+            <p style="color: #888; margin-bottom: 16px;">Generate a proof that attests to the edit integrity without revealing transformation details.</p>
+            <button class="btn" id="proveBtn">Generate Proof</button>
+            <div id="proveResult" class="result"></div>
+        </div>
+
+        <div class="card">
+            <h2>4. Verify Proof</h2>
+            <p style="color: #888; margin-bottom: 16px;">Verify the generated proof independently.</p>
+            <button class="btn" id="verifyBtn">Verify Proof</button>
+            <div id="verifyResult" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+        const imagePreview = document.getElementById('imagePreview');
+        const uploadResult = document.getElementById('uploadResult');
+        const editBtn = document.getElementById('editBtn');
+        const editResult = document.getElementById('editResult');
+        const proveBtn = document.getElementById('proveBtn');
+        const proveResult = document.getElementById('proveResult');
+        const verifyBtn = document.getElementById('verifyBtn');
+        const verifyResult = document.getElementById('verifyResult');
+
+        let currentFile = null;
+        let editedFilePath = null;
+        let proofFilePath = null;
+
+        // File upload handling
+        uploadArea.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            currentFile = file;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                imagePreview.src = event.target.result;
+                imagePreview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+
+            // Call verify API
+            verifyProvenance(file);
+        }
+
+        async function verifyProvenance(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                // For demo, we'll use the CLI via fetch
+                // In production, this would be a proper API
+                uploadResult.innerHTML = '<span class="status-badge pending">Verifying...</span>';
+                uploadResult.style.display = 'block';
+                uploadResult.className = 'result';
+
+                // Simulate API call - in real implementation, this would call the backend
+                setTimeout(() => {
+                    uploadResult.innerHTML = `
+                        <span class="status-badge pending">Demo Mode</span>
+                        <p style="margin-top: 12px; color: #888;">
+                            In a real deployment, this would verify C2PA provenance using the CLI:<br>
+                            <code>brevis-vera verify &lt;file&gt;</code>
+                        </p>
+                    `;
+                    document.getElementById('step1').classList.add('completed');
+                    document.getElementById('step2').classList.add('active');
+                }, 1000);
+            } catch (error) {
+                uploadResult.innerHTML = `<span class="status-badge error">Error: ${error.message}</span>`;
+                uploadResult.className = 'result error';
+            }
+        }
+
+        // Edit button
+        editBtn.addEventListener('click', async () => {
+            const crop = document.getElementById('cropInput').value;
+            const resize = document.getElementById('resizeInput').value;
+            const brightness = document.getElementById('brightnessInput').value;
+
+            editResult.innerHTML = '<span class="status-badge pending">Processing...</span>';
+            editResult.style.display = 'block';
+            editResult.className = 'result';
+
+            // Simulate API call
+            setTimeout(() => {
+                editResult.innerHTML = `
+                    <span class="status-badge verified">Success</span>
+                    <p style="margin-top: 12px;">
+                        Image transformations applied:<br>
+                        ${crop ? '- Crop: ' + crop + '<br>' : ''}
+                        ${resize ? '- Resize: ' + resize + '<br>' : ''}
+                        ${brightness ? '- Brightness: ' + brightness + '<br>' : ''}
+                    </p>
+                    <p style="margin-top: 12px; color: #888;">
+                        CLI command:<br>
+                        <code>brevis-vera edit input.jpg output.jpg ${crop ? '--crop ' + crop : ''} ${resize ? '--resize ' + resize : ''} ${brightness ? '--brightness ' + brightness : ''}</code>
+                    </p>
+                `;
+                editResult.className = 'result success';
+                document.getElementById('step2').classList.add('completed');
+                document.getElementById('step3').classList.add('active');
+            }, 1000);
+        });
+
+        // Prove button
+        proveBtn.addEventListener('click', async () => {
+            proveResult.innerHTML = '<span class="status-badge pending">Generating Proof...</span>';
+            proveResult.style.display = 'block';
+            proveResult.className = 'result';
+
+            // Simulate API call
+            setTimeout(() => {
+                proveResult.innerHTML = `
+                    <span class="status-badge verified">Proof Generated</span>
+                    <p style="margin-top: 12px;">
+                        ZK Proof created successfully!<br>
+                        Attested: Edit integrity (transformation details hidden)
+                    </p>
+                    <p style="margin-top: 12px; color: #888;">
+                        CLI command:<br>
+                        <code>brevis-vera prove original.jpg edited.jpg proof.json</code>
+                    </p>
+                `;
+                proveResult.className = 'result success';
+                document.getElementById('step3').classList.add('completed');
+                document.getElementById('step4').classList.add('active');
+            }, 1500);
+        });
+
+        // Verify button
+        verifyBtn.addEventListener('click', async () => {
+            verifyResult.innerHTML = '<span class="status-badge pending">Verifying...</span>';
+            verifyResult.style.display = 'block';
+            verifyResult.className = 'result';
+
+            // Simulate API call
+            setTimeout(() => {
+                verifyResult.innerHTML = `
+                    <span class="status-badge verified">VALID</span>
+                    <p style="margin-top: 12px;">
+                        Proof verified successfully!<br>
+                        Verified transformations: edit_integrity
+                    </p>
+                    <p style="margin-top: 12px; color: #888;">
+                        CLI command:<br>
+                        <code>brevis-vera verify-proof proof.json edited.jpg</code>
+                    </p>
+                `;
+                verifyResult.className = 'result success';
+                document.getElementById('step4').classList.add('completed');
+            }, 1000);
+        });
+
+        // Drag and drop support
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#00d4ff';
+        });
+
+        uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFileSelect({ target: files });
+            }
+        });
+    </script>
+</body>
+</html>

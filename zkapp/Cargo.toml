@@ -1,0 +1,9 @@
+[package]
+edition.workspace = true
+name = "zkapp"
+version.workspace = true
+
+[dependencies]
+pico-sdk.workspace = true
+serde.workspace = true
+tiny-keccak = {git = "https://github.com/brevis-network/tiny-keccak", branch = "patch-v1.0.0", features = ["keccak"]}
