@@ -298,8 +298,11 @@
         const verifyResult = document.getElementById('verifyResult');
 
         let currentFile = null;
+        let currentFileBytes = null;  // Original image bytes as ArrayBuffer
         let provenanceData = null;
         let editedImageBase64 = null;
+        let editedImageBytes = null;  // Edited image bytes as Uint8Array
+        let editOperations = [];       // Edit operations to send to prove API
         let proofData = null;
 
         // File upload handling
@@ -311,6 +314,15 @@
             if (!file) return;
 
             currentFile = file;
+
+            // Read file as ArrayBuffer for prove API
+            const arrayReader = new FileReader();
+            arrayReader.onload = function(event) {
+                currentFileBytes = new Uint8Array(event.target.result);
+            };
+            arrayReader.readAsArrayBuffer(file);
+
+            // Read file as DataURL for preview
             const reader = new FileReader();
             reader.onload = function(event) {
                 imagePreview.src = event.target.result;
@@ -372,6 +384,17 @@
             const resize = document.getElementById('resizeInput').value;
             const brightness = document.getElementById('brightnessInput').value;
 
+            // Build operations for prove API
+            editOperations = [];
+            if (crop) {
+                const [x, y, w, h] = crop.split(',').map(Number);
+                editOperations.push({ Crop: { x, y, width: w, height: h } });
+            }
+            if (brightness) {
+                editOperations.push({ AdjustBrightness: { delta: parseInt(brightness) } });
+            }
+            // Note: Resize is not part of EditOperation enum, it's handled separately
+
             const formData = new FormData();
             formData.append('file', currentFile);
             if (crop) formData.append('crop', crop);
@@ -392,6 +415,15 @@
                 if (result.success && result.data) {
                     const data = result.data;
                     editedImageBase64 = data.output_base64;
+
+                    // Convert base64 to Uint8Array for prove API
+                    if (editedImageBase64) {
+                        const binaryString = atob(editedImageBase64);
+                        editedImageBytes = new Uint8Array(binaryString.length);
+                        for (let i = 0; i < binaryString.length; i++) {
+                            editedImageBytes[i] = binaryString.charCodeAt(i);
+                        }
+                    }
 
                     let transformList = '';
                     if (data.result.params.crop) transformList += `- Crop: ${data.result.params.crop}<br>`;
@@ -420,8 +452,8 @@
 
         // Prove button
         proveBtn.addEventListener('click', async () => {
-            if (!editedImageBase64) {
-                proveResult.innerHTML = '<span class="status-badge error">Please edit an image first</span>';
+            if (!editedImageBase64 || !currentFileBytes || !editedImageBytes) {
+                proveResult.innerHTML = '<span class="status-badge error">Please upload and edit an image first</span>';
                 proveResult.style.display = 'block';
                 proveResult.className = 'result error';
                 return;
@@ -432,17 +464,16 @@
             proveResult.className = 'result';
 
             try {
-                // For now, call the prove API with placeholder input
-                // In a full implementation, this would use the actual proof input
+                // Call prove API with proper input
                 const response = await fetch('/api/prove', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        original_hash: "placeholder",
-                        edited_hash: "placeholder",
-                        transformations: {}
+                        raw_image_bytes: Array.from(currentFileBytes),
+                        operations: editOperations,
+                        new_image_bytes: Array.from(editedImageBytes)
                     })
                 });
                 const result = await response.json();

@@ -289,8 +289,8 @@ pub async fn run_server(host: &str, port: u16) {
         .route("/health", get(health))
         .route("/api/verify", post(verify).layer(DefaultBodyLimit::max(20 * 1024 * 1024)))
         .route("/api/edit", post(edit).layer(DefaultBodyLimit::max(20 * 1024 * 1024)))
-        .route("/api/prove", post(prove))
-        .route("/api/verify-proof", post(verify_proof))
+        .route("/api/prove", post(prove).layer(DefaultBodyLimit::max(20 * 1024 * 1024)))
+        .route("/api/verify-proof", post(verify_proof).layer(DefaultBodyLimit::max(20 * 1024 * 1024)))
         .layer(cors)
         .with_state(state);
 
