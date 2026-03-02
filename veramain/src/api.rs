@@ -1,6 +1,6 @@
 // RESTful API module for vera
 use axum::{
-    extract::{Multipart, State},
+    extract::{DefaultBodyLimit, Multipart, State},
     http::StatusCode,
     response::{Html, IntoResponse, Json, Response},
     routing::{get, post},
@@ -283,12 +283,12 @@ pub async fn run_server(host: &str, port: u16) {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    // Build router
+    // Build router with increased body limit (20MB for file uploads)
     let app = Router::new()
         .route("/", get(ui_index))
         .route("/health", get(health))
-        .route("/api/verify", post(verify))
-        .route("/api/edit", post(edit))
+        .route("/api/verify", post(verify).layer(DefaultBodyLimit::max(20 * 1024 * 1024)))
+        .route("/api/edit", post(edit).layer(DefaultBodyLimit::max(20 * 1024 * 1024)))
         .route("/api/prove", post(prove))
         .route("/api/verify-proof", post(verify_proof))
         .layer(cors)
