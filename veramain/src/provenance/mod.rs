@@ -55,14 +55,39 @@ pub fn verify_c2pa_provenance(file_path: &str) -> ProvenanceInfo {
                 .map(|_m| "C2PA manifest present".to_string());
 
             // Verify signature by checking validation status
-            let validation_errors: Vec<String> = reader
-                .validation_results()
-                .iter()
-                .map(|status| format!("{:?}", status))
-                .collect();
+            // Only collect actual failures, not informational or success statuses
+            let validation_results = reader.validation_results();
 
-            // Determine if verification succeeded (no validation errors)
-            let is_verified = validation_errors.is_empty() && has_manifest;
+            // Collect failures from active manifest
+            let validation_errors: Vec<String> = validation_results
+                .as_ref()
+                .and_then(|vr| vr.active_manifest())
+                .map(|am| {
+                    am.failure()
+                        .iter()
+                        .map(|status| format!("{:?}", status))
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            // Also check ingredient deltas for failures
+            let mut all_errors = validation_errors;
+            if let Some(vr) = validation_results.as_ref() {
+                if let Some(deltas) = vr.ingredient_deltas() {
+                    for delta in deltas {
+                        let delta_errors: Vec<String> = delta
+                            .validation_deltas()
+                            .failure()
+                            .iter()
+                            .map(|status| format!("{:?}", status))
+                            .collect();
+                        all_errors.extend(delta_errors);
+                    }
+                }
+            }
+
+            // Determine if verification succeeded: has manifest AND no failures
+            let is_verified = all_errors.is_empty() && has_manifest;
 
             ProvenanceInfo {
                 is_verified,
@@ -70,7 +95,7 @@ pub fn verify_c2pa_provenance(file_path: &str) -> ProvenanceInfo {
                 claim_label,
                 json_output,
                 error: None,
-                validation_errors,
+                validation_errors: all_errors,
                 file_hash,
             }
         }
