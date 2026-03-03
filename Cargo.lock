@@ -6629,8 +6629,11 @@ dependencies = [
 name = "zkapp"
 version = "0.1.0"
 dependencies = [
+ "ed25519-dalek",
  "pico-sdk",
  "serde",
+ "serde_with",
+ "sha2",
  "tiny-keccak 2.0.2 (git+https://github.com/brevis-network/tiny-keccak?branch=patch-v1.0.0)",
 ]
 

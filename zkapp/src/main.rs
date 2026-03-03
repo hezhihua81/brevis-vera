@@ -1,27 +1,59 @@
 #![no_main]
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use pico_sdk::io::{commit, read_as};
+use sha2::{Digest, Sha256};
+use zkapp::types::{ProofInput, ProofOutput};
 
 pico_sdk::entrypoint!(main);
-use pico_sdk::io::{commit, read_as};
-use tiny_keccak::{Hasher, Keccak};
-use zkapp::types::{ProofInput, ProofOutput};
 
 pub fn main() {
     let proof_input: ProofInput = read_as();
 
-    let mut raw_hash_value = [0; 32];
-    let mut hasher = Keccak::v256();
-    hasher.update(&proof_input.raw_image_bytes);
-    hasher.finalize(&mut raw_hash_value);
+    let public_key = VerifyingKey::from_bytes(&proof_input.public_key_bytes).unwrap();
+    let signature = Signature::from_bytes(&proof_input.signature_bytes);
+    public_key
+        .verify(&proof_input.raw_image_bytes, &signature)
+        .expect("C2PA Signature Verification Failed");
 
-    // TODO: replay edits and compare with new hash value
+    let mut processed_img = proof_input.raw_image_bytes.clone();
+    for op in proof_input.operations {
+        match op {
+            zkapp::types::EditOperation::Crop {
+                x,
+                y,
+                width,
+                height,
+            } => processed_img = apply_crop(&processed_img, x, y, width, height),
+            zkapp::types::EditOperation::AdjustBrightness { delta } => {
+                processed_img = apply_brightness(&mut processed_img, delta);
+            }
+        }
+    }
 
-    let mut new_hash_value = [0; 32];
-    let mut hasher = Keccak::v256();
-    hasher.update(&proof_input.new_image_bytes);
-    hasher.finalize(&mut new_hash_value);
+    assert_eq!(
+        processed_img, proof_input.new_image_bytes,
+        "Transformation mismatch!"
+    );
+
+    let old_hash = Sha256::digest(&proof_input.raw_image_bytes);
+    let new_hash = Sha256::digest(&proof_input.new_image_bytes);
 
     commit(&ProofOutput {
-        raw_hash_value,
-        new_hash_value,
+        raw_hash_value: old_hash.into(),
+        new_hash_value: new_hash.into(),
     });
+}
+
+fn apply_brightness(pixels: &mut [u8], delta: i16) -> Vec<u8> {
+    for pixel in pixels.iter_mut() {
+        let val = *pixel as i16 + delta;
+        *pixel = val.clamp(0, 255) as u8;
+    }
+    pixels.to_vec()
+}
+
+fn apply_crop(data: &[u8], x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity((w * h * 3) as usize);
+    // TODO
+    out
 }
