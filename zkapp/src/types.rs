@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use serde_with::Bytes;
+use serde_with::serde_as;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum EditOperation {
@@ -9,6 +9,12 @@ pub enum EditOperation {
         y: u32,
         width: u32,
         height: u32,
+        source_width: u32,
+        source_height: u32,
+    },
+    Resize {
+        target_width: u32,
+        target_height: u32,
         source_width: u32,
         source_height: u32,
     },

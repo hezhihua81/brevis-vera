@@ -25,7 +25,31 @@ pub fn main() {
                 height,
                 source_width,
                 source_height,
-            } => processed_img = apply_crop(&processed_img, x, y, width, height, source_width, source_height),
+            } => {
+                processed_img = apply_crop(
+                    &processed_img,
+                    x,
+                    y,
+                    width,
+                    height,
+                    source_width,
+                    source_height,
+                )
+            }
+            zkapp::types::EditOperation::Resize {
+                target_width,
+                target_height,
+                source_width,
+                source_height,
+            } => {
+                processed_img = apply_resize(
+                    &processed_img,
+                    target_width as usize,
+                    target_height as usize,
+                    source_width as usize,
+                    source_height as usize,
+                )
+            }
             zkapp::types::EditOperation::AdjustBrightness { delta } => {
                 processed_img = apply_brightness(&mut processed_img, delta);
             }
@@ -54,7 +78,15 @@ fn apply_brightness(pixels: &mut [u8], delta: i16) -> Vec<u8> {
     pixels.to_vec()
 }
 
-fn apply_crop(data: &[u8], x: u32, y: u32, w: u32, h: u32, source_width: u32, _source_height: u32) -> Vec<u8> {
+fn apply_crop(
+    data: &[u8],
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+    source_width: u32,
+    _source_height: u32,
+) -> Vec<u8> {
     let mut out = Vec::with_capacity((w * h * 3) as usize);
     let src_width = source_width as usize;
 
@@ -62,11 +94,33 @@ fn apply_crop(data: &[u8], x: u32, y: u32, w: u32, h: u32, source_width: u32, _s
         for col in x..(x + w) {
             let src_idx = (row as usize * src_width + col as usize) * 3;
             if src_idx + 2 < data.len() {
-                out.push(data[src_idx]);     // R
+                out.push(data[src_idx]); // R
                 out.push(data[src_idx + 1]); // G
                 out.push(data[src_idx + 2]); // B
             }
         }
     }
     out
+}
+
+fn apply_resize(
+    data: &[u8],
+    target_width: usize,
+    target_height: usize,
+    source_width: usize,
+    source_height: usize,
+) -> Vec<u8> {
+    let mut resized_data = Vec::with_capacity(target_width * target_height);
+
+    for y in 0..target_height {
+        for x in 0..target_width {
+            let src_x = (x * source_width) / target_width;
+            let src_y = (y * source_height) / target_height;
+
+            let pixel_idx = src_y * source_width + src_x;
+            resized_data.push(data[pixel_idx]);
+        }
+    }
+
+    resized_data
 }
