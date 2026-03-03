@@ -1,6 +1,7 @@
 // Provenance verification module using C2PA SDK
 use c2pa::Reader;
 use serde::{Deserialize, Serialize};
+use sha2::{Sha256, Digest};
 use std::path::Path;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -11,13 +12,23 @@ pub struct ProvenanceInfo {
     pub json_output: String,
     pub error: Option<String>,
     pub validation_errors: Vec<String>,
+    pub file_hash: Option<String>,
 }
 
 pub fn verify_c2pa_provenance(file_path: &str) -> ProvenanceInfo {
     let path = Path::new(file_path);
 
-    // Check if file exists
-    if !path.exists() {
+    // Check if file exists and compute hash
+    let file_hash = if path.exists() {
+        match std::fs::read(path) {
+            Ok(data) => {
+                let mut hasher = Sha256::new();
+                hasher.update(&data);
+                Some(format!("{:x}", hasher.finalize()))
+            }
+            Err(_) => None,
+        }
+    } else {
         return ProvenanceInfo {
             is_verified: false,
             has_manifest: false,
@@ -25,8 +36,9 @@ pub fn verify_c2pa_provenance(file_path: &str) -> ProvenanceInfo {
             json_output: String::new(),
             error: Some(format!("File not found: {}", file_path)),
             validation_errors: vec![],
+            file_hash: None,
         };
-    }
+    };
 
     // Use C2PA Reader API to verify the manifest and signature
     match Reader::from_file(path) {
@@ -59,6 +71,7 @@ pub fn verify_c2pa_provenance(file_path: &str) -> ProvenanceInfo {
                 json_output,
                 error: None,
                 validation_errors,
+                file_hash,
             }
         }
         Err(e) => {
@@ -70,6 +83,7 @@ pub fn verify_c2pa_provenance(file_path: &str) -> ProvenanceInfo {
                 json_output: String::new(),
                 error: Some(format!("C2PA error: {}", e)),
                 validation_errors: vec![],
+                file_hash,
             }
         }
     }
@@ -88,6 +102,7 @@ mod tests {
             json_output: "{}".to_string(),
             error: None,
             validation_errors: vec![],
+            file_hash: None,
         };
 
         assert!(info.is_verified);

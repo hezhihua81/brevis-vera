@@ -280,7 +280,14 @@
         <div class="card">
             <h2>4. Verify Proof</h2>
             <p style="color: #888; margin-bottom: 16px;">Verify the generated proof independently.</p>
-            <button class="btn" id="verifyBtn">Verify Proof</button>
+            <div class="file-upload" id="verifyUploadArea">
+                <input type="file" id="verifyFileInput" accept="image/jpeg,image/png">
+                <div class="file-upload-icon">📁</div>
+                <p>Click or drag image here</p>
+                <p style="color: #666; font-size: 0.85rem; margin-top: 8px;">Supports JPEG and PNG</p>
+            </div>
+            <img id="verifyImagePreview" class="image-preview" alt="Verify Preview">
+            <button class="btn" id="verifyBtn" style="margin-top: 16px;">Verify Proof</button>
             <div id="verifyResult" class="result"></div>
         </div>
     </div>
@@ -296,12 +303,17 @@
         const proveResult = document.getElementById('proveResult');
         const verifyBtn = document.getElementById('verifyBtn');
         const verifyResult = document.getElementById('verifyResult');
+        const verifyFileInput = document.getElementById('verifyFileInput');
+        const verifyUploadArea = document.getElementById('verifyUploadArea');
+        const verifyImagePreview = document.getElementById('verifyImagePreview');
+        let verifyImageBytes = null;  // Verification image bytes
 
         let currentFile = null;
         let currentFileBytes = null;  // Original image bytes as ArrayBuffer
         let provenanceData = null;
         let editedImageBase64 = null;
         let editedImageBytes = null;  // Edited image bytes as Uint8Array
+        let editedImageHash = null;    // Edited image SHA-256 hash
         let editOperations = [];       // Edit operations to send to prove API
         let proofData = null;
 
@@ -334,6 +346,30 @@
             verifyProvenance(file);
         }
 
+        // Verify file upload handling
+        verifyUploadArea.addEventListener('click', () => verifyFileInput.click());
+        verifyFileInput.addEventListener('change', handleVerifyFileSelect);
+
+        function handleVerifyFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Read file as ArrayBuffer for hash calculation
+            const arrayReader = new FileReader();
+            arrayReader.onload = function(event) {
+                verifyImageBytes = new Uint8Array(event.target.result);
+            };
+            arrayReader.readAsArrayBuffer(file);
+
+            // Read file as DataURL for preview
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                verifyImagePreview.src = event.target.result;
+                verifyImagePreview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+
         async function verifyProvenance(file) {
             const formData = new FormData();
             formData.append('file', file);
@@ -352,11 +388,21 @@
                 if (result.success && result.data) {
                     provenanceData = result.data.provenance;
                     const p = provenanceData;
-                    const statusClass = p.verified ? 'verified' : 'invalid';
-                    const statusText = p.verified ? 'Verified' : 'Not Verified';
+                    const statusClass = p.is_verified ? 'verified' : 'invalid';
+                    const statusText = p.is_verified ? 'Verified' : 'Not Verified';
+
+                    // Format hash display with highlighting
+                    let hashDisplay = '';
+                    if (p.file_hash) {
+                        hashDisplay = `<div style="margin-top: 12px; padding: 8px; background: #f5f5f5; border-radius: 4px;">
+                            <strong style="color: #666;">SHA-256:</strong>
+                            <code style="display: block; margin-top: 4px; color: #e83e8c; font-family: monospace; word-break: break-all;">${p.file_hash}</code>
+                        </div>`;
+                    }
 
                     uploadResult.innerHTML = `
                         <span class="status-badge ${statusClass}">${statusText}</span>
+                        ${hashDisplay}
                         <pre style="margin-top: 12px;">${JSON.stringify(p, null, 2)}</pre>
                     `;
                     uploadResult.className = 'result success';
@@ -415,6 +461,7 @@
                 if (result.success && result.data) {
                     const data = result.data;
                     editedImageBase64 = data.output_base64;
+                    editedImageHash = data.output_hash;
 
                     // Convert base64 to Uint8Array for prove API
                     if (editedImageBase64) {
@@ -430,12 +477,22 @@
                     if (data.result.params.resize) transformList += `- Resize: ${data.result.params.resize}<br>`;
                     if (data.result.params.brightness) transformList += `- Brightness: ${data.result.params.brightness}<br>`;
 
+                    // Format hash display with highlighting
+                    let hashDisplay = '';
+                    if (editedImageHash) {
+                        hashDisplay = `<div style="margin-top: 12px; padding: 8px; background: #f5f5f5; border-radius: 4px;">
+                            <strong style="color: #666;">Output SHA-256:</strong>
+                            <code style="display: block; margin-top: 4px; color: #e83e8c; font-family: monospace; word-break: break-all;">${editedImageHash}</code>
+                        </div>`;
+                    }
+
                     editResult.innerHTML = `
                         <span class="status-badge verified">Success</span>
                         <p style="margin-top: 12px;">
                             Image transformations applied:<br>
                             ${transformList}
                         </p>
+                        ${hashDisplay}
                         ${editedImageBase64 ? `<img src="data:image/jpeg;base64,${editedImageBase64}" style="max-width: 100%; max-height: 200px; margin-top: 12px; border-radius: 8px;">` : ''}
                     `;
                     editResult.className = 'result success';
@@ -464,29 +521,36 @@
             proveResult.className = 'result';
 
             try {
-                // Call prove API with proper input
-                const response = await fetch('/api/prove', {
+                // Call mock-prove API with raw and new image bytes
+                const formData = new FormData();
+                formData.append('raw_image', new Blob([currentFileBytes]));
+                formData.append('new_image', new Blob([editedImageBytes]));
+
+                const response = await fetch('/api/mock-prove', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        raw_image_bytes: Array.from(currentFileBytes),
-                        operations: editOperations,
-                        new_image_bytes: Array.from(editedImageBytes)
-                    })
+                    body: formData
                 });
                 const result = await response.json();
 
                 if (result.success && result.data) {
-                    proofData = result.data.proof_output;
+                    const { raw_image_hash, new_image_hash } = result.data;
+                    proofData = result.data;
                     proveResult.innerHTML = `
                         <span class="status-badge verified">Proof Generated</span>
                         <p style="margin-top: 12px;">
                             ZK Proof created successfully!<br>
                             Attested: Edit integrity (transformation details hidden)
                         </p>
-                        <pre style="margin-top: 12px; max-height: 150px; overflow-y: auto;">${JSON.stringify(proofData, null, 2)}</pre>
+                        <div style="margin-top: 12px;">
+                            <div style="padding: 8px; background: #f5f5f5; border-radius: 4px; margin-bottom: 8px;">
+                                <strong style="color: #666;">Raw Image SHA-256:</strong>
+                                <code style="display: block; margin-top: 4px; color: #e83e8c; font-family: monospace; word-break: break-all;">${raw_image_hash}</code>
+                            </div>
+                            <div style="padding: 8px; background: #f5f5f5; border-radius: 4px;">
+                                <strong style="color: #666;">New Image SHA-256:</strong>
+                                <code style="display: block; margin-top: 4px; color: #e83e8c; font-family: monospace; word-break: break-all;">${new_image_hash}</code>
+                            </div>
+                        </div>
                     `;
                     proveResult.className = 'result success';
                     document.getElementById('step3').classList.add('completed');
@@ -502,32 +566,66 @@
 
         // Verify button
         verifyBtn.addEventListener('click', async () => {
+            if (!verifyImageBytes) {
+                verifyResult.innerHTML = '<span class="status-badge error">Please upload an image first</span>';
+                verifyResult.style.display = 'block';
+                verifyResult.className = 'result error';
+                return;
+            }
+
+            if (!editedImageHash) {
+                verifyResult.innerHTML = '<span class="status-badge error">No proof generated yet. Please complete step 3 first.</span>';
+                verifyResult.style.display = 'block';
+                verifyResult.className = 'result error';
+                return;
+            }
+
             verifyResult.innerHTML = '<span class="status-badge pending">Verifying...</span>';
             verifyResult.style.display = 'block';
             verifyResult.className = 'result';
 
             try {
-                const response = await fetch('/api/verify-proof', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({})
-                });
-                const result = await response.json();
+                // Calculate SHA-256 of uploaded verification image
+                const hashBuffer = await crypto.subtle.digest('SHA-256', verifyImageBytes);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                const verifyImageHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-                if (result.success) {
+                // Compare with the new image hash from step 3
+                const isVerified = verifyImageHash === editedImageHash;
+
+                if (isVerified) {
                     verifyResult.innerHTML = `
-                        <span class="status-badge verified">VALID</span>
+                        <span class="status-badge verified">Verified</span>
                         <p style="margin-top: 12px;">
                             Proof verified successfully!<br>
-                            Verified transformations: edit_integrity
+                            The uploaded image matches the edited image from step 3.
                         </p>
+                        <div style="margin-top: 12px; padding: 8px; background: #f5f5f5; border-radius: 4px;">
+                            <strong style="color: #666;">Uploaded Image SHA-256:</strong>
+                            <code style="display: block; margin-top: 4px; color: #e83e8c; font-family: monospace; word-break: break-all;">${verifyImageHash}</code>
+                        </div>
                     `;
                     verifyResult.className = 'result success';
                     document.getElementById('step4').classList.add('completed');
                 } else {
-                    throw new Error(result.error || 'Verification failed');
+                    verifyResult.innerHTML = `
+                        <span class="status-badge invalid">Not Verified</span>
+                        <p style="margin-top: 12px;">
+                            Verification failed!<br>
+                            The uploaded image does not match the edited image from step 3.
+                        </p>
+                        <div style="margin-top: 12px;">
+                            <div style="padding: 8px; background: #f5f5f5; border-radius: 4px; margin-bottom: 8px;">
+                                <strong style="color: #666;">Uploaded Image SHA-256:</strong>
+                                <code style="display: block; margin-top: 4px; color: #e83e8c; font-family: monospace; word-break: break-all;">${verifyImageHash}</code>
+                            </div>
+                            <div style="padding: 8px; background: #f5f5f5; border-radius: 4px;">
+                                <strong style="color: #666;">Expected SHA-256:</strong>
+                                <code style="display: block; margin-top: 4px; color: #e83e8c; font-family: monospace; word-break: break-all;">${editedImageHash}</code>
+                            </div>
+                        </div>
+                    `;
+                    verifyResult.className = 'result error';
                 }
             } catch (error) {
                 verifyResult.innerHTML = `<span class="status-badge error">Error: ${error.message}</span>`;
@@ -553,6 +651,27 @@
             if (files.length > 0) {
                 fileInput.files = files;
                 handleFileSelect({ target: { files: files } });
+            }
+        });
+
+        // Verify upload area drag and drop support
+        verifyUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            verifyUploadArea.style.borderColor = '#00d4ff';
+        });
+
+        verifyUploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            verifyUploadArea.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+        });
+
+        verifyUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            verifyUploadArea.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                verifyFileInput.files = files;
+                handleVerifyFileSelect({ target: { files: files } });
             }
         });
     </script>

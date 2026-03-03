@@ -9,6 +9,7 @@ use axum::{
 use crate::image_editing::{edit_image, EditResult};
 use crate::provenance::{verify_c2pa_provenance, ProvenanceInfo};
 use serde::Serialize;
+use sha2::{Sha256, Digest};
 use std::path::PathBuf;
 use tower_http::cors::{Any, CorsLayer};
 use zkapp::types::{ProofInput, ProofOutput};
@@ -72,11 +73,18 @@ pub struct VerifyResponse {
 pub struct EditResponse {
     pub result: EditResult,
     pub output_base64: Option<String>,
+    pub output_hash: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ProveResponse {
     pub proof_output: ProofOutput,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProveMockResponse {
+    pub raw_image_hash: String,
+    pub new_image_hash: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -213,18 +221,21 @@ async fn edit(
     .await
     .map_err(|e| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: format!("Task error: {}", e) })?;
 
-    // Read output file as base64 if successful
-    let output_base64 = if result.success {
+    // Read output file as base64 and compute hash if successful
+    let (output_base64, output_hash) = if result.success {
         match tokio::fs::read(&output_path).await {
             Ok(bytes) => {
                 use base64::Engine;
                 let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                Some(b64)
+                let mut hasher = Sha256::new();
+                hasher.update(&bytes);
+                let hash = format!("{:x}", hasher.finalize());
+                (Some(b64), Some(hash))
             }
-            Err(_) => None,
+            Err(_) => (None, None),
         }
     } else {
-        None
+        (None, None)
     };
 
     // Clean up temp files
@@ -236,6 +247,7 @@ async fn edit(
     Ok(Json(ApiResponse::success(EditResponse {
         result,
         output_base64,
+        output_hash,
     })))
 }
 
@@ -260,6 +272,47 @@ async fn prove(Json(payload): Json<ProofInput>) -> Result<Json<ApiResponse<Prove
     .map_err(|e| ApiError { status: StatusCode::INTERNAL_SERVER_ERROR, message: format!("Task error: {}", e) })?;
 
     Ok(Json(ApiResponse::success(ProveResponse { proof_output })))
+}
+
+/// Mock prove - returns SHA-256 hashes of raw and new images
+async fn mock_prove(
+    mut multipart: Multipart,
+) -> Result<Json<ApiResponse<ProveMockResponse>>, ApiError> {
+    let mut raw_image_bytes: Option<Vec<u8>> = None;
+    let mut new_image_bytes: Option<Vec<u8>> = None;
+
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        ApiError { status: StatusCode::BAD_REQUEST, message: format!("Failed to parse multipart: {}", e) }
+    })? {
+        let name = field.name().unwrap_or("").to_string();
+        let bytes = field.bytes().await.map_err(|e| {
+            ApiError { status: StatusCode::BAD_REQUEST, message: format!("Failed to read file: {}", e) }
+        })?;
+
+        match name.as_str() {
+            "raw_image" => raw_image_bytes = Some(bytes.to_vec()),
+            "new_image" => new_image_bytes = Some(bytes.to_vec()),
+            _ => {}
+        }
+    }
+
+    let raw_bytes = raw_image_bytes
+        .ok_or_else(|| ApiError { status: StatusCode::BAD_REQUEST, message: "No raw_image provided".to_string() })?;
+    let new_bytes = new_image_bytes
+        .ok_or_else(|| ApiError { status: StatusCode::BAD_REQUEST, message: "No new_image provided".to_string() })?;
+
+    let mut raw_hasher = Sha256::new();
+    raw_hasher.update(&raw_bytes);
+    let raw_image_hash = format!("{:x}", raw_hasher.finalize());
+
+    let mut new_hasher = Sha256::new();
+    new_hasher.update(&new_bytes);
+    let new_image_hash = format!("{:x}", new_hasher.finalize());
+
+    Ok(Json(ApiResponse::success(ProveMockResponse {
+        raw_image_hash,
+        new_image_hash,
+    })))
 }
 
 /// Verify ZK proof (placeholder)
@@ -290,6 +343,7 @@ pub async fn run_server(host: &str, port: u16) {
         .route("/api/verify", post(verify).layer(DefaultBodyLimit::max(20 * 1024 * 1024)))
         .route("/api/edit", post(edit).layer(DefaultBodyLimit::max(20 * 1024 * 1024)))
         .route("/api/prove", post(prove).layer(DefaultBodyLimit::max(20 * 1024 * 1024)))
+        .route("/api/mock-prove", post(mock_prove).layer(DefaultBodyLimit::max(20 * 1024 * 1024)))
         .route("/api/verify-proof", post(verify_proof).layer(DefaultBodyLimit::max(20 * 1024 * 1024)))
         .layer(cors)
         .with_state(state);
@@ -303,6 +357,7 @@ pub async fn run_server(host: &str, port: u16) {
     println!("   POST /api/verify       - Verify C2PA provenance");
     println!("   POST /api/edit        - Edit image");
     println!("   POST /api/prove       - Generate ZK proof");
+    println!("   POST /api/mock-prove  - Mock prove (returns hashes)");
     println!("   POST /api/verify-proof - Verify ZK proof");
 
     axum::serve(listener, app).await.unwrap();
