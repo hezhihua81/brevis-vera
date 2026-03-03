@@ -23,7 +23,9 @@ pub fn main() {
                 y,
                 width,
                 height,
-            } => processed_img = apply_crop(&processed_img, x, y, width, height),
+                source_width,
+                source_height,
+            } => processed_img = apply_crop(&processed_img, x, y, width, height, source_width, source_height),
             zkapp::types::EditOperation::AdjustBrightness { delta } => {
                 processed_img = apply_brightness(&mut processed_img, delta);
             }
@@ -52,8 +54,19 @@ fn apply_brightness(pixels: &mut [u8], delta: i16) -> Vec<u8> {
     pixels.to_vec()
 }
 
-fn apply_crop(data: &[u8], x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
+fn apply_crop(data: &[u8], x: u32, y: u32, w: u32, h: u32, source_width: u32, _source_height: u32) -> Vec<u8> {
     let mut out = Vec::with_capacity((w * h * 3) as usize);
-    // TODO
+    let src_width = source_width as usize;
+
+    for row in y..(y + h) {
+        for col in x..(x + w) {
+            let src_idx = (row as usize * src_width + col as usize) * 3;
+            if src_idx + 2 < data.len() {
+                out.push(data[src_idx]);     // R
+                out.push(data[src_idx + 1]); // G
+                out.push(data[src_idx + 2]); // B
+            }
+        }
+    }
     out
 }

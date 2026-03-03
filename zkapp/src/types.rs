@@ -9,6 +9,8 @@ pub enum EditOperation {
         y: u32,
         width: u32,
         height: u32,
+        source_width: u32,
+        source_height: u32,
     },
     AdjustBrightness {
         delta: i16,
